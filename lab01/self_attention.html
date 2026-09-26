@@ -1,0 +1,260 @@
+<title>Self-Attention Schritt für Schritt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --bg:#f4f6f9; --panel:#ffffff; --ink:#1a2130; --muted:#5b6578; --line:#d5dbe5;
+  --x:#5a6b85; --q:#2f6fdb; --k:#d27a1f; --v:#23946a; --z:#7a55d0;
+  --pos:#2f6fdb; --neg:#d0473a;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#11151c; --panel:#1a202a; --ink:#e4e8ef; --muted:#98a2b3; --line:#2e3746;
+    --x:#8c9bb3; --q:#6a9bf0; --k:#eb9a45; --v:#4cc392; --z:#a888f0;
+    --pos:#6a9bf0; --neg:#f0766a;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#11151c; --panel:#1a202a; --ink:#e4e8ef; --muted:#98a2b3; --line:#2e3746;
+  --x:#8c9bb3; --q:#6a9bf0; --k:#eb9a45; --v:#4cc392; --z:#a888f0;
+  --pos:#6a9bf0; --neg:#f0766a;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;padding-inline:16px;padding-block:32px 64px}
+main{max-width:980px;margin:0 auto;display:grid;gap:28px}
+h1,h2{text-wrap:balance;line-height:1.2;margin:0}
+h1{font-size:30px;font-weight:700}
+h2{font-size:20px;font-weight:600;display:flex;gap:10px;align-items:baseline}
+h2 .step{font:500 13px "IBM Plex Mono",monospace;color:var(--muted)}
+p{margin:0;max-width:68ch}
+.lead{color:var(--muted);font-size:16px}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px;display:grid;gap:14px}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.92em}
+.scroll{overflow-x:auto}
+svg{display:block;width:100%;height:auto}
+svg text{font-family:"IBM Plex Mono",monospace;fill:var(--ink)}
+svg .dim{fill:var(--muted);font-size:12px}
+svg .lbl{font-size:18px;font-weight:500}
+svg .op{font-size:26px;fill:var(--muted)}
+.cx{fill:color-mix(in srgb,var(--x) 22%,transparent);stroke:var(--x)}
+.cq{fill:color-mix(in srgb,var(--q) 22%,transparent);stroke:var(--q)}
+.ck{fill:color-mix(in srgb,var(--k) 22%,transparent);stroke:var(--k)}
+.cv{fill:color-mix(in srgb,var(--v) 22%,transparent);stroke:var(--v)}
+.cz{fill:color-mix(in srgb,var(--z) 22%,transparent);stroke:var(--z)}
+.ca{fill:color-mix(in srgb,var(--muted) 18%,transparent);stroke:var(--muted)}
+.hl{fill-opacity:1;stroke-width:2}
+.hx{fill:color-mix(in srgb,var(--x) 60%,transparent)}
+.hq{fill:color-mix(in srgb,var(--q) 60%,transparent)}
+.hk{fill:color-mix(in srgb,var(--k) 60%,transparent)}
+.hv{fill:color-mix(in srgb,var(--v) 60%,transparent)}
+.hz{fill:color-mix(in srgb,var(--z) 60%,transparent)}
+.ha{fill:color-mix(in srgb,var(--muted) 45%,transparent)}
+.grid{stroke:var(--panel);stroke-width:1}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:12px;height:12px;border-radius:3px;display:inline-block}
+.tokens{display:flex;flex-wrap:wrap;gap:6px}
+.tok{font:500 13px "IBM Plex Mono",monospace;border:1px solid var(--line);border-radius:6px;padding:4px 8px;background:var(--bg);color:var(--ink);cursor:pointer}
+.tok small{color:var(--muted);margin-left:4px}
+.tok[aria-pressed="true"]{border-color:var(--q);background:color-mix(in srgb,var(--q) 16%,var(--panel))}
+.tok:focus-visible{outline:2px solid var(--q);outline-offset:2px}
+table.hm{border-collapse:collapse;font:12px/1 "IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+table.hm th{font-weight:500;color:var(--muted);padding:4px 6px;white-space:nowrap}
+table.hm th.r{text-align:right}
+table.hm td{width:54px;height:30px;text-align:center;border:1px solid var(--panel)}
+table.hm tr.sel th{color:var(--ink)}
+table.hm tr.sel td{outline:2px solid var(--q);outline-offset:-2px}
+.pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px}
+.cap{font-size:13px;color:var(--muted)}
+.bars{display:grid;gap:6px}
+.bar{display:grid;grid-template-columns:70px 1fr 48px;gap:10px;align-items:center;font:13px "IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+.bar .track{height:14px;background:var(--bg);border-radius:3px;overflow:hidden}
+.bar .fill{height:100%;background:var(--v);transition:width .3s}
+.bar .n{text-align:right}
+.formula{font:14px "IBM Plex Mono",monospace;background:var(--bg);border-radius:6px;padding:10px 12px;overflow-x:auto;white-space:nowrap}
+.note{border-left:3px solid var(--k);padding-left:12px}
+@media (prefers-reduced-motion:reduce){.bar .fill{transition:none}}
+</style>
+
+<main>
+<header style="display:grid;gap:10px">
+  <h1>Self-Attention Schritt für Schritt</h1>
+  <p class="lead">Lab 01c mit dem Satz <span class="mono">"Life is too short for bad coffee"</span>, d = 8, d<sub>q</sub> = d<sub>k</sub> = 24, d<sub>v</sub> = 28. Alle Zahlen sind mit <span class="mono">torch.manual_seed(42)</span> berechnet, genau wie im Notebook, wenn jede Zelle einmal der Reihe nach läuft.</p>
+  <div class="legend">
+    <span><i class="sw" style="background:var(--x)"></i>X: Embeddings</span>
+    <span><i class="sw" style="background:var(--q)"></i>Q: Queries</span>
+    <span><i class="sw" style="background:var(--k)"></i>K: Keys</span>
+    <span><i class="sw" style="background:var(--v)"></i>V: Values</span>
+    <span><i class="sw" style="background:var(--z)"></i>Z: Context-Vektoren</span>
+  </div>
+</header>
+
+<section>
+  <h2><span class="step">1</span>Vom Satz zur Matrix X</h2>
+  <p>Jedes Wort wird über das <code>vocab</code> zu einer ID. Die ID wählt eine Zeile aus der Embedding-Tabelle. Übereinandergestapelt ergibt das X: eine Zeile pro Token, 8 Spalten pro Token.</p>
+  <div class="scroll"><table class="hm" id="tblX"></table></div>
+  <p class="cap">Blau = positiver Wert, Rot = negativer Wert. Die Zahlen sind zufällig, weil das Embedding noch nicht trainiert ist.</p>
+</section>
+
+<section>
+  <h2><span class="step">2</span>Drei Projektionen: X → Q, K, V</h2>
+  <p>Dieselben drei Matrizen werden auf <b>jedes</b> Token angewendet. Die hervorgehobene Zeile zeigt das Token <span class="mono" id="selName2"></span>: Sein Vektor mit 8 Werten wird mit der ganzen Matrix multipliziert und ergibt eine Zeile mit 24 bzw. 28 Werten.</p>
+  <div class="scroll" id="proj"></div>
+  <p class="cap">Hier in Zeilenform geschrieben (<code>X @ W.T</code>). Das Notebook rechnet in Spaltenform, <code>K = W_k @ X.T</code>, ergibt also 24 × 7. Der Inhalt ist derselbe, nur transponiert.</p>
+</section>
+
+<section>
+  <h2><span class="step">3</span>Scores: jede Query gegen jeden Key</h2>
+  <p>Ω = Q · Kᵀ. Eintrag (i, j) ist das Skalarprodukt q<sub>i</sub> · k<sub>j</sub>, also wie gut die Query von Token i zum Key von Token j passt. Dafür müssen q und k gleich lang sein (d<sub>q</sub> = d<sub>k</sub> = 24).</p>
+  <div class="scroll" id="scoreEq"></div>
+  <p>Wähle ein Query-Token:</p>
+  <div class="tokens" id="tokBtns"></div>
+  <div class="pair">
+    <div style="display:grid;gap:6px">
+      <b>Ω: rohe Scores</b>
+      <div class="scroll"><table class="hm" id="tblO"></table></div>
+      <p class="cap">Zeile = Query (wer schaut), Spalte = Key (wird angeschaut).</p>
+    </div>
+    <div style="display:grid;gap:6px">
+      <b>A = softmax(Ω / √24), zeilenweise</b>
+      <div class="scroll"><table class="hm" id="tblA"></table></div>
+      <p class="cap">Jede Zeile summiert sich zu 1. Das sind die Attention-Gewichte.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="step">4</span>Gewichtete Summe der Values: Z = A · V</h2>
+  <p>Für Token <span class="mono" id="selName4"></span> wird jeder Value-Vektor v<sub>j</sub> mit dem Gewicht a<sub>ij</sub> multipliziert, dann wird alles aufsummiert. Das Ergebnis z<sub>i</sub> hat die Länge d<sub>v</sub> = 28 und enthält Information aus dem ganzen Satz.</p>
+  <div class="scroll" id="outEq"></div>
+  <div class="pair">
+    <div style="display:grid;gap:6px">
+      <b>Gewichte a<sub>ij</sub> für die gewählte Query</b>
+      <div class="bars" id="bars"></div>
+    </div>
+    <div style="display:grid;gap:6px">
+      <b>Formel</b>
+      <div class="formula" id="formula"></div>
+      <p class="cap">z<sub>i</sub> (die ersten 6 von 28 Werten):</p>
+      <div class="formula" id="zvec"></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="step">∑</span>Alles in einer Zeile</h2>
+  <div class="formula">Z = softmax( (X·W<sub>q</sub>ᵀ) · (X·W<sub>k</sub>ᵀ)ᵀ / √d<sub>k</sub> ) · (X·W<sub>v</sub>ᵀ)</div>
+  <p class="note">Die Gewichte in A sind hier sehr einseitig: Fast alle Tokens schauen auf <span class="mono">for</span>. Das ist kein Sprachmuster, sondern kommt von den untrainierten Matrizen. <code>torch.rand</code> liefert nur positive Werte, deshalb dominiert ein Token mit grossem Key. Erst durch das Training lernen W<sub>q</sub>, W<sub>k</sub> und W<sub>v</sub> sinnvolle Beziehungen, zum Beispiel dass <span class="mono">short</span> auf <span class="mono">Life</span> schaut.</p>
+</section>
+</main>
+
+<script>
+const words=["Life","is","too","short","for","bad","coffee"];
+const ids=[0,4,6,5,3,1,2];
+const X=[[1.93,1.49,0.9,-2.11,0.68,-1.23,-0.04,-1.6],[-1.38,-0.87,-0.22,1.72,0.32,-0.42,0.31,-0.77],[-1.2,0.71,-1.08,0.54,1.18,0.56,-0.45,-0.77],[-0.84,-0.92,1.81,0.16,0.37,0.18,1.39,-0.45],[1.28,1.3,0.61,1.33,-0.23,0.04,-0.25,0.86],[-0.75,1.65,-0.39,-1.4,-0.73,-0.56,-0.77,0.76],[1.64,-0.16,-0.5,0.44,-0.76,1.08,0.8,1.68]];
+const O=[[5.48,-15.58,-6.09,10.6,39.68,-11.75,34.11],[-8.1,14.37,0.23,-8.09,-47.58,11.06,-33.51],[-7.46,8.19,1.87,-8.26,-28.68,7.72,-19.38],[9.26,-16.49,-12.59,27.48,52.88,-18.93,38.72],[27.48,-44.77,-9.07,29.99,129.39,-31.99,94.79],[-11.89,18.05,12.14,-27.23,-56.81,23.06,-45.79],[22.35,-29.57,-4.38,25.25,99.49,-27.44,69.93]];
+const A=[[0,0,0,0,0.76,0,0.24],[0.01,0.63,0.04,0.01,0,0.32,0],[0.02,0.44,0.12,0.02,0,0.4,0],[0,0,0,0.01,0.94,0,0.05],[0,0,0,0,1,0,0],[0,0.24,0.07,0,0,0.68,0],[0,0,0,0,1,0,0]];
+const Z=[[2.0,2.21,3.12,2.44,3.67,3.16],[-0.79,-1.34,-0.85,-0.8,-1.23,-1.09],[-0.55,-1.25,-0.88,-0.9,-1.05,-0.76],[2.16,1.89,3.17,2.38,3.91,3.23],[2.21,1.81,3.21,2.37,3.99,3.27],[-0.46,-1.54,-1.02,-1.18,-1.06,-0.29],[2.2,1.81,3.21,2.38,3.99,3.27]];
+let sel=3;
+const NS="http://www.w3.org/2000/svg";
+
+function heat(tbl,M,{diverging=true,colLabels,rowLabels,max,accent="--q",fmt=v=>v.toFixed(2)}){
+  const m=max??Math.max(...M.flat().map(Math.abs));
+  let h="<tr><th></th>"+colLabels.map(c=>`<th>${c}</th>`).join("")+"</tr>";
+  M.forEach((row,i)=>{
+    h+=`<tr data-r="${i}"><th class="r">${rowLabels[i]}</th>`;
+    row.forEach(v=>{
+      const p=Math.round(Math.min(1,Math.abs(v)/m)*70);
+      const col=diverging?(v>=0?"var(--pos)":"var(--neg)"):`var(${accent})`;
+      h+=`<td style="background:color-mix(in srgb,${col} ${p}%,transparent)">${fmt(v)}</td>`;
+    });
+    h+="</tr>";
+  });
+  tbl.innerHTML=h;
+}
+
+// Matrix block as a grid of cells; hlRow highlights one row, hlAll fills everything
+function block(g,x,y,rows,cols,u,cls,name,{hlRow=-1,hlAll=false,hlCol=-1}={}){
+  const r=document.createElementNS(NS,"rect");
+  Object.entries({x,y,width:cols*u,height:rows*u,class:cls,rx:2,"stroke-width":1.5}).forEach(([k,v])=>r.setAttribute(k,v));
+  g.appendChild(r);
+  const hc=cls.replace("c","h");
+  if(hlRow>=0||hlAll||hlCol>=0){
+    const hr=document.createElementNS(NS,"rect");
+    const box=hlAll?[x,y,cols*u,rows*u]:hlRow>=0?[x,y+hlRow*u,cols*u,u]:[x+hlCol*u,y,u,rows*u];
+    ["x","y","width","height"].forEach((k,i)=>hr.setAttribute(k,box[i]));
+    hr.setAttribute("class",hc);g.appendChild(hr);
+  }
+  for(let i=1;i<rows;i++){const l=document.createElementNS(NS,"line");Object.entries({x1:x,x2:x+cols*u,y1:y+i*u,y2:y+i*u,class:"grid"}).forEach(([k,v])=>l.setAttribute(k,v));g.appendChild(l);}
+  for(let j=1;j<cols;j++){const l=document.createElementNS(NS,"line");Object.entries({x1:x+j*u,x2:x+j*u,y1:y,y2:y+rows*u,class:"grid"}).forEach(([k,v])=>l.setAttribute(k,v));g.appendChild(l);}
+  text(g,x+cols*u/2,y-10,name,"lbl");
+  text(g,x+cols*u/2,y+rows*u+18,`${rows} × ${cols}`,"dim");
+}
+function text(g,x,y,s,cls,anchor="middle"){
+  const t=document.createElementNS(NS,"text");
+  t.setAttribute("x",x);t.setAttribute("y",y);t.setAttribute("class",cls);t.setAttribute("text-anchor",anchor);
+  t.innerHTML=s;g.appendChild(t);
+}
+// Draws a row of "A · B = C" equations
+function equation(host,rows,u,minW){
+  const W=minW, H=rows.reduce((s,r)=>s+r.h,0);
+  const svg=document.createElementNS(NS,"svg");
+  svg.setAttribute("viewBox",`0 0 ${W} ${H}`);svg.style.minWidth=Math.round(W*0.62)+"px";
+  let y=0;
+  rows.forEach(r=>{
+    const g=document.createElementNS(NS,"g");svg.appendChild(g);
+    let x=10;const top=y+34, mid=y+34+r.midU*u;
+    r.items.forEach(it=>{
+      if(typeof it==="string"){text(g,x+16,mid+9,it,"op");x+=32;return;}
+      block(g,x,top,it.r,it.c,u,it.cls,it.name,it.opt||{});x+=it.c*u+14;
+    });
+    y+=r.h;
+  });
+  host.innerHTML="";host.appendChild(svg);
+}
+
+function drawProj(){
+  const u=11, mk=(W,name,cls,c)=>({h:150,midU:4,items:[
+    {r:7,c:8,cls:"cx",name:"X",opt:{hlRow:sel}},"·",
+    {r:8,c:c,cls:cls,name:W,opt:{hlAll:true}},"=",
+    {r:7,c:c,cls:cls,name:name,opt:{hlRow:sel}}]});
+  equation(document.getElementById("proj"),[
+    mk("W<tspan dy='6' font-size='12'>q</tspan><tspan dy='-6'>ᵀ</tspan>","Q","cq",24),
+    mk("W<tspan dy='6' font-size='12'>k</tspan><tspan dy='-6'>ᵀ</tspan>","K","ck",24),
+    mk("W<tspan dy='6' font-size='12'>v</tspan><tspan dy='-6'>ᵀ</tspan>","V","cv",28)],u,830);
+}
+function drawScore(){
+  equation(document.getElementById("scoreEq"),[{h:320,midU:3.5,items:[
+    {r:7,c:24,cls:"cq",name:"Q",opt:{hlRow:sel}},"·",
+    {r:24,c:7,cls:"ck",name:"Kᵀ",opt:{hlAll:false}},"=",
+    {r:7,c:7,cls:"ca",name:"Ω",opt:{hlRow:sel}}]}],11,560);
+}
+function drawOut(){
+  equation(document.getElementById("outEq"),[{h:130,midU:3.5,items:[
+    {r:7,c:7,cls:"ca",name:"A",opt:{hlRow:sel}},"·",
+    {r:7,c:28,cls:"cv",name:"V",opt:{hlAll:true}},"=",
+    {r:7,c:28,cls:"cz",name:"Z",opt:{hlRow:sel}}]}],11,810);
+}
+
+function update(){
+  document.querySelectorAll(".tok").forEach((b,i)=>b.setAttribute("aria-pressed",i===sel));
+  ["tblO","tblA"].forEach(id=>document.querySelectorAll(`#${id} tr[data-r]`).forEach(tr=>tr.classList.toggle("sel",+tr.dataset.r===sel)));
+  document.getElementById("selName2").textContent=`"${words[sel]}"`;
+  document.getElementById("selName4").textContent=`"${words[sel]}"`;
+  drawProj();drawScore();drawOut();
+  document.getElementById("bars").innerHTML=A[sel].map((a,j)=>
+    `<div class="bar"><span>${words[j]}</span><div class="track"><div class="fill" style="width:${a*100}%"></div></div><span class="n">${a.toFixed(2)}</span></div>`).join("");
+  document.getElementById("formula").innerHTML="z<sub>"+sel+"</sub> = "+A[sel].map((a,j)=>`${a.toFixed(2)}·v<sub>${words[j]}</sub>`).join(" + ");
+  document.getElementById("zvec").textContent="["+Z[sel].map(v=>v.toFixed(2)).join(", ")+", …]";
+}
+
+heat(document.getElementById("tblX"),X,{colLabels:[...Array(8).keys()].map(i=>"x"+i),rowLabels:words.map((w,i)=>`${w} <span style="opacity:.6">id ${ids[i]}</span>`)});
+heat(document.getElementById("tblO"),O,{colLabels:words.map(w=>"k:"+w.slice(0,4)),rowLabels:words.map(w=>"q:"+w),fmt:v=>v.toFixed(0)});
+heat(document.getElementById("tblA"),A,{diverging:false,accent:"--v",max:1,colLabels:words.map(w=>w.slice(0,4)),rowLabels:words});
+document.getElementById("tokBtns").innerHTML=words.map((w,i)=>`<button class="tok" id="tok${i}" type="button">${w}<small>${i}</small></button>`).join("");
+document.querySelectorAll(".tok").forEach((b,i)=>b.addEventListener("click",()=>{sel=i;update();}));
+document.querySelectorAll("#tblO tr[data-r], #tblA tr[data-r]").forEach(tr=>{tr.style.cursor="pointer";tr.addEventListener("click",()=>{sel=+tr.dataset.r;update();});});
+update();
+</script>
